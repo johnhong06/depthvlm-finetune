@@ -1,60 +1,88 @@
 # depthvlm-finetune
 
-Fine-tune **DepthVLM-4B** ([Yu et al., 2026](https://arxiv.org/abs/2605.15876)) on **NYU Depth V2** and on the **KITTI Eigen split**, and evaluate it with the same protocol as Table V (NYU) and Table VI (KITTI) of [UniDepthV2](https://arxiv.org/abs/2502.20110):
-δ1 / δ2 / δ3, AbsRel, RMS and Log10 (NYU) or RMSlog (KITTI). The zero-shot DepthVLM-4B is measured with the same protocol for reference.
+DepthVLM-4B를 NYU Depth V2와 KITTI Eigen 분할에 각각 파인튜닝하고 UniDepthV2 논문의 표 V(NYU)·표 VI(KITTI)와 같은 규칙으로 재서 파인튜닝한 pure vision 모델들과 비교한다.
 
-In those tables only the evaluation protocol is shared; every method uses its own fine-tuning recipe. This repository therefore follows the standard evaluation exactly
-and keeps DepthVLM's official stage-2 training recipe, changing only what a single GPU and a ~23k-image dataset require. Every change is listed in [`docs/PROTOCOL.md`](docs/PROTOCOL.md) (Korean).
+## 동기
 
-## Protocol in short
+vlm-depth-rmse에서는 DepthVLM-4B를 zero-shot으로만 비교했다. 원래 RMSE 비교는 한 데이터셋에 파인튜닝한 모델끼리 하는데, 그때는 여건상 그렇게 하지 못했다. DepthVLM은 학습 코드가 공개돼 있고 4B 모델 전체 학습이 H200 한 장에 들어가므로, 이번에는 표준 파인튜닝 비교를 직접 해 본다. 기준은 UniDepthV2 논문의 표 V·VI다. NYU와 KITTI는 둘 다 DepthVLM 사전학습 데이터(8개)에 들어 있지 않다.
 
-| | NYU (Table V) | KITTI (Table VI) |
-|:--|:--|:--|
-| Test set | official 654 images, GT = `rawDepths` (BTS extraction) | Eigen test, 652 images with annotated depth |
-| Train set | BTS `sync` list, 24,231 pairs | Eigen train list, 23,158 images |
-| Model input | 640×480 | KB crop (bottom 352 rows, centre 1216 columns) |
-| Evaluated pixels | 0.001 < GT < 10 m, Eigen crop | 0.001 < GT < 80 m, Garg crop |
-| Averaging | per image, then mean (as BTS / UniDepth) | same |
+## 공통 설계
 
-- Epochs are selected on a validation split held out from the training scenes/drives (5 %, seed 0); the test set is scored once, after selection.
-- The scorer (`eval/std_eval.py`) is checked against published Metric3Dv2 numbers before any training result is read.
+표 V·VI에서 모델끼리 같은 것은 평가 규칙뿐이고 학습 방식은 모델마다 다르다. UniDepthV2 논문도 파인튜닝 설정은 "표준 관행대로"라고만 적었다. 그래서 평가는 표준 규칙을 그대로 따르고 DepthVLM은 공식 2단계 학습 설정을 그대로 쓴다. GPU 한 장과 2만 장 규모 데이터 때문에 꼭 필요한 부분만 바꿨다.
 
-## Layout
+평가는 BTS 공식 평가 코드와 같은 규칙이다. 지표는 사진마다 계산한 뒤 평균하고 테스트 때 좌우 뒤집기 평균(TTA)은 쓰지 않는다. 채점 코드는 학습 결과를 보기 전에 Metric3Dv2로 NYU·KITTI 논문 수치를 재현해 검증했다.
 
-```
-prep/        fetch_splits.sh, fetch_kitti.sh, fetch_nyu_sync.sh, fetch_ext.sh   download sources (pinned)
-             build_nyu.py, build_kitti.py, make_jsonl.py                        rebuild + verify data, DepthVLM jsonl
-             pack.py                                                            zip bundles for the GPU server
-eval/        predict.py (DepthVLM official inference path; Metric3Dv2 for checks), std_eval.py (BTS rules), select_epoch.py
-train/       train_ft.py (runs the official train.py, adds the KITTI depth range), train_ft.sh (stage-2 arguments)
-h200/        unpack.py (verify SHA256 and extract the zip bundles)
-run.sh       server entry point: env | smoke | zeroshot | nyu | kitti | all
-third_party/DepthVLM   official code at commit 5d1472d (unmodified)
-envs/        pinned Python environments
-```
+학습은 공개된 DepthVLM-4B에서 시작한다. 비전 인코더는 고정하고 LLM과 깊이 헤드를 학습하며 손실(SILog + 답 문장)과 학습률(2e-5, cosine)은 공식 값 그대로다. 바꾼 것은 전체 배치(640 → 64), 에폭(1 → 3), 정밀도 구성(GPU 한 장이라 FSDP 대신 fp32 가중치 + bf16 계산)이다. 에폭은 학습 장면(NYU)·주행(KITTI)에서 5 %를 떼어 낸 검증 세트로 고르고 테스트 세트는 고른 뒤 한 번만 잰다.
 
-## Reproduce
+## NYU Depth V2 (UniDepthV2 표 V)
 
-```bash
-# data (local): download, rebuild, verify, pack
-bash prep/fetch_splits.sh && bash prep/fetch_kitti.sh && bash prep/fetch_nyu_sync.sh
-python prep/build_nyu.py --sync ~/data/nyuv2_bts/sync.zip --mat ~/data/nyuv2 --splits ~/data/dvft/splits --out ~/data/dvft/data
-python prep/build_kitti.py --kitti ~/data/kitti --splits ~/data/dvft/splits --out ~/data/dvft/data
-python prep/make_jsonl.py --ds nyu --data ~/data/dvft/data --splits ~/data/dvft/splits
-python prep/make_jsonl.py --ds kitti --data ~/data/dvft/data --splits ~/data/dvft/splits
-python prep/pack.py --data ~/data/dvft/data --splits ~/data/dvft/splits --out ~/data/h200_staging/dvft
+### 데이터
 
-# GPU server (one H200): the zip bundles go under /app/data
-bash run.sh env && bash run.sh smoke && bash run.sh nyu && bash run.sh kitti
-```
+| 구분 | 내용 |
+|---|---|
+| 학습 | BTS 학습 목록 24,231장 중 22,923장 (나머지 1,308장은 검증용으로 떼어 냄) |
+| 검증 | 떼어 낸 장면 13개에서 400장 |
+| 테스트 | 공식 테스트 654장, 정답은 Kinect 원측정(rawDepths) |
+| 채점 | 0.001 m < 정답 < 10 m, Eigen crop |
 
-`nyu_depth_v2_labeled.mat` and `splits.mat` come from the [NYU Depth V2 page](https://cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html); KITTI raw drives and `data_depth_annotated.zip` from the [KITTI depth benchmark](https://www.cvlibs.net/datasets/kitti/eval_depth.php?benchmark=depth_prediction).
-Data, predictions and weights are not stored in this repository.
+### 결과
 
-## Results
+굵게 = 1위, <u>밑줄</u> = 2위 (UniDepthV2 논문 표 그대로이며 DepthVLM 결과가 나오면 다시 매긴다). δ는 %, A.Rel은 100을 곱한 값이다. 다른 모델의 수치는 UniDepthV2 논문 표 V에서 옮겼다.
 
-To be filled after the server runs (see `NOTES.md`).
+| 모델 | 학습 | δ1↑ | δ2↑ | δ3↑ | A.Rel↓ | RMS↓ | Log10↓ |
+|---|---|--:|--:|--:|--:|--:|--:|
+| BTS (arXiv 2019) | NYU만 | 88.5 | 97.8 | 99.4 | 10.9 | 0.391 | 0.046 |
+| AdaBins (CVPR 2021) | NYU만 | 90.1 | 98.3 | 99.6 | 10.3 | 0.365 | 0.044 |
+| NeWCRFs (CVPR 2022) | NYU만 | 92.1 | 99.1 | <u>99.8</u> | 9.56 | 0.333 | 0.040 |
+| iDisc (CVPR 2023) | NYU만 | 93.8 | 99.2 | <u>99.8</u> | 8.61 | 0.313 | 0.037 |
+| ZoeDepth (arXiv 2023) | 사전학습 후 NYU 파인튜닝 | 95.2 | <u>99.5</u> | <u>99.8</u> | 7.70 | 0.278 | 0.033 |
+| Metric3Dv2 (TPAMI 2024) | 사전학습 후 NYU 파인튜닝 | **98.9** | **99.8** | **100** | <u>4.70</u> | <u>0.183</u> | **0.020** |
+| Depth Anything V2 (NeurIPS 2024) | 사전학습 후 NYU 파인튜닝 | 98.4 | **99.8** | **100** | 5.60 | 0.206 | <u>0.024</u> |
+| UniDepthV2-Large (arXiv 2025) | 사전학습 후 NYU 파인튜닝 | <u>98.8</u> | **99.8** | **100** | **4.68** | **0.180** | **0.020** |
+| DepthVLM-4B (arXiv 2026) | 사전학습 후 NYU 파인튜닝 |  |  |  |  |  |  |
 
-## License
+BTS 학습 목록에는 테스트 장면 `bookstore_0001`과 같은 서점의 다른 녹화 구간(1,383장)이 들어 있다. 표의 다른 모델도 같은 목록을 썼다고 보고 그대로 두었다.
 
-Code written for this repository: MIT (see `LICENSE`). Third-party code, models and datasets keep their own licenses — see [`NOTICE.md`](NOTICE.md).
+## KITTI Eigen 분할 (UniDepthV2 표 VI)
+
+### 데이터
+
+| 구분 | 내용 |
+|---|---|
+| 학습 | Eigen 학습 목록 23,158장 중 21,922장 (주행 27개, 나머지는 검증용으로 떼어 냄) |
+| 검증 | 떼어 낸 주행 6개에서 400장 |
+| 테스트 | Eigen 테스트 697장 중 정답이 있는 652장, 정답은 공식 annotated depth |
+| 입력 | KB crop (아래 352줄, 가운데 1216칸) |
+| 채점 | 0.001 m < 정답 < 80 m, Garg crop |
+
+### 결과
+
+굵게 = 1위, <u>밑줄</u> = 2위 (UniDepthV2 논문 표 그대로이며 DepthVLM 결과가 나오면 다시 매긴다). δ는 %, A.Rel은 100을 곱한 값이다. 다른 모델의 수치는 UniDepthV2 논문 표 VI에서 옮겼다.
+
+| 모델 | 학습 | δ1↑ | δ2↑ | δ3↑ | A.Rel↓ | RMS↓ | RMSlog↓ |
+|---|---|--:|--:|--:|--:|--:|--:|
+| BTS (arXiv 2019) | KITTI만 | 96.2 | 99.4 | 99.8 | 5.63 | 2.43 | 0.089 |
+| AdaBins (CVPR 2021) | KITTI만 | 96.3 | 99.5 | 99.8 | 5.85 | 2.38 | 0.089 |
+| NeWCRFs (CVPR 2022) | KITTI만 | 97.5 | <u>99.7</u> | <u>99.9</u> | 5.20 | 2.07 | 0.078 |
+| iDisc (CVPR 2023) | KITTI만 | 97.5 | <u>99.7</u> | <u>99.9</u> | 5.09 | 2.07 | 0.077 |
+| ZoeDepth (arXiv 2023) | 사전학습 후 KITTI 파인튜닝 | 96.5 | 99.1 | 99.4 | 5.76 | 2.39 | 0.089 |
+| Metric3Dv2 (TPAMI 2024)† | 사전학습 후 KITTI 파인튜닝 | <u>98.5</u> | **99.8** | **100** | <u>4.40</u> | 1.99 | <u>0.064</u> |
+| Depth Anything V2 (NeurIPS 2024) | 사전학습 후 KITTI 파인튜닝 | 98.3 | **99.8** | **100** | 4.50 | <u>1.86</u> | 0.067 |
+| UniDepthV2-Large (arXiv 2025) | 사전학습 후 KITTI 파인튜닝 | **98.9** | **99.8** | <u>99.9</u> | **3.73** | **1.71** | **0.061** |
+| DepthVLM-4B (arXiv 2026) | 사전학습 후 KITTI 파인튜닝 |  |  |  |  |  |  |
+
+† Metric3Dv2 행은 Metric3D 공식 평가 코드 기준일 가능성이 크다. 그 코드는 Garg crop 대신 Eigen crop을 쓰고 예측을 자르지 않으며 논문 표의 RMSlog 칸에는 실제로 SILog가 들어간다. 우리 채점 코드를 그 규칙에 맞추면 Metric3Dv2의 KITTI zero-shot 논문 수치 6개가 모두 재현된다 (NOTES F-4).
+
+## 진행 상황
+
+- [x] 데이터 재생성·검증 (NYU·KITTI)
+- [x] 채점 코드 검증 (Metric3Dv2 논문 수치 재현)
+- [x] 학습 코드 로컬 점검
+- [ ] H200 스모크 (속도·메모리)
+- [ ] NYU 파인튜닝·평가
+- [ ] KITTI 파인튜닝·평가
+- [ ] 결과 표 작성
+
+세부 설정과 바꾼 부분의 근거, 검증 기준은 [docs/PROTOCOL.md](docs/PROTOCOL.md)에 정리했다.
+
+이 저장소에서 작성한 코드는 MIT 라이선스다([LICENSE](LICENSE)). 외부 코드와 모델 가중치, 데이터셋은 각자의 라이선스를 따르며 출처는 [NOTICE.md](NOTICE.md)에 적었다.
