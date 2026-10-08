@@ -1,0 +1,21 @@
+# DepthVLM-4B 학습 + 추론 환경 (H200 = uv/conda, 로컬 = ~/venv/depthvlm_train). 공식 requirements.txt 는 하한만 있다.
+# transformers 는 체크포인트 config 의 transformers_version(5.2.0)으로 고정한다. trl 은 공식 train-stage*.sh 의 인자(--torch_dtype, --max_seq_length)를
+# 둘 다 받는 마지막 판 0.19.1 (0.20 부터 max_seq_length, 0.27 부터 torch_dtype 이 없어 공식 스크립트가 인자 오류로 멈춘다). 나머지는 2026-02 무렵 판.
+# flash-attn 은 run.sh 가 H200 에서 휠로 따로 깐다 (로컬은 sdpa). torch 는 vlm-depth-rmse 와 같은 cu128 빌드.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.7.1
+torchvision==0.22.1
+transformers==5.2.0
+accelerate==1.13.0
+trl==0.19.1
+peft==0.18.1
+datasets==4.5.0
+qwen-vl-utils==0.0.14
+tensorboard
+einops
+numpy<2.3
+pandas
+pyarrow
+pillow
+scipy
+opencv-python-headless

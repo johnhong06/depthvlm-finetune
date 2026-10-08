@@ -1,0 +1,15 @@
+# Metric3Dv2 추론 환경 (hub 경로). 공식 requirements_v2.txt(torch 2.0.1, numpy 1.23.1 …)는 Python 3.12 휠이 없어 hub 경로가 실제로 import 하는 것만 둔다:
+# mmcv.utils.collect_env(mono/utils/comm.py, 대체 경로 없음) → mmcv-lite + mmengine(Config 대체 경로), ConvNeXt import 때문에 timm. xformers 는 선택.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.7.1
+torchvision==0.22.1
+mmcv-lite==2.2.0
+mmengine==0.10.7
+timm
+numpy<2.3
+opencv-python-headless
+matplotlib
+pillow
+pandas
+pyarrow
+huggingface_hub
