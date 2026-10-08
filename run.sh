@@ -41,7 +41,7 @@ PY=$(mkenv) || exit 1
 ATTN=$($PY -c "import flash_attn; print('flash_attention_2')" 2>/dev/null || echo sdpa); echo "[env] attention $ATTN"
 # DepthVLM-4B 가중치: HF 고정 리비전 (vlm-depth-rmse Track B 와 같은 리비전) → 로컬 폴더 경로
 BASE=$($PY -c "from huggingface_hub import snapshot_download as s; print(s('JonnyYu828/DepthVLM-4B', revision='2b2d02fcfe0c89c8aa7d541055e5a078930077c9'))" | tail -n 1) || exit 1
-echo "[weights] DepthVLM-4B → $BASE ($(du -sh "$BASE/" | cut -f1))"
+echo "[weights] DepthVLM-4B → $BASE ($(du -shL "$BASE/" | cut -f1))"
 
 monitor() {  # $1 = 학습 로그. PROGRESS_SEC 마다 마지막 손실 줄 + GPU 상태
   while sleep "${PROGRESS_SEC:-600}"; do

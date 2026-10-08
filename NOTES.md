@@ -31,7 +31,8 @@
 ### H200 (사용자 제출)
 - [x] 드라이브 `gdrive:h200_dvft` 업로드 (20 파일 = zip 17 + SHA256SUMS + manifest + README_ADMIN, 25.55 GiB) — 드라이브 SHA256 20/20·MD5 일치 (실행 로그 13:25)
 - [ ] (사용자) 저장소 푸시 → 관리자에게 드라이브 `h200_dvft` 전달 → `/app/data` 아래
-- [ ] `bash run.sh env` → `bash run.sh smoke` (속도·메모리 확인 후 본 실험 시간 추정)
+- [x] `bash run.sh env` 통과 (이슈 johnhong06_888, commit b925eee, 6 분) — 실행 로그 10-08 14:16
+- [ ] `bash run.sh smoke` (속도·메모리 확인 후 본 실험 시간 추정)
 - [ ] `bash run.sh nyu`, `bash run.sh kitti` → 결과 표 (README·docs)
 
 ## 결정 기록
@@ -110,6 +111,10 @@
 - 2026-10-08 12:28 `h200/unpack.py` 로 17 개 전부 풀기 (24 초, SHA256 통과) → `diff -rq` 로 원본과 97,407 파일 바이트 일치. 드라이브 폴더 zip 처럼 감싼 경우(zip 안의 zip)도 풀림 확인.
 - 2026-10-08 12:43–13:23 `rclone copy ~/data/h200_staging/dvft gdrive:h200_dvft` (전송 4 개, 청크 128M) — 종료 0. 속도가 3–60 MiB/s 로 출렁였고
   rclone 이 일부를 다시 보내 전송 합계가 38.5 GiB (파일 합 25.55 GiB) — 오류 줄은 없음. 13:25 `rclone hashsum sha256` 20/20 = 로컬, `rclone check` 0 differences / 20 matching.
+- 2026-10-08 14:10–14:16 KST (서버 05:10–05:16 UTC) H200 `bash run.sh env` (이슈 johnhong06_888, commit b925eee) — 통과. conda 없음 → uv 로 환경 생성(예상대로, vlm-depth-rmse F-6),
+  torch 2.7.1+cu128 · transformers 5.2.0 · trl 0.19.1, H200 NVL 140 GiB, flash_attention_2. DepthVLM-4B HF 리비전 2b2d02f 받기 2 분, 불러오기 정상.
+  WORK = /app/scratch/dvft_work (여유 455 GB) — /app/data 는 쓰기 불가라 작업 사이에 남지 않는 곳 → 작업마다 환경·zip 풀기를 다시 한다 (작업당 10–15 분 더).
+  가중치 크기 표시 '12K' 는 HF 캐시의 심볼릭 링크만 센 것 → run.sh 의 du 를 -L 로 고침 (표시만, 동작 무관).
 - 2026-10-08 14:00 README 를 한국어로 교체 (사용자 지시: vlm-depth-rmse README 와 같은 형식). 결과 표 = UniDepthV2 표 V·VI 수치·굵게/밑줄 그대로 + 모델명 옆 학회·연도
   (arXiv 원문 comments·journal-ref 로 확인: BTS arXiv 2019, AdaBins CVPR 2021, NeWCRFs CVPR 2022, iDisc CVPR 2023, ZoeDepth arXiv 2023, Metric3Dv2 TPAMI 2024,
   Depth Anything V2 NeurIPS 2024, UniDepthV2 arXiv 2025, DepthVLM arXiv 2026), DepthVLM-4B 칸은 비움. humanize-korean 윤문(light, 변경률 0.2 %, 게이트 통과, 표·헤딩 바이트 동일).
