@@ -29,7 +29,8 @@
 - [x] 커밋 (푸시는 사용자)
 
 ### H200 (사용자 제출)
-- [ ] (사용자) 저장소 푸시, 드라이브에 `~/data/h200_staging/dvft/` 올리기(요청하면 rclone 으로 올림) → 관리자에게 전달 → `/app/data` 아래
+- [x] 드라이브 `gdrive:h200_dvft` 업로드 (20 파일 = zip 17 + SHA256SUMS + manifest + README_ADMIN, 25.55 GiB) — 드라이브 SHA256 20/20·MD5 일치 (실행 로그 13:25)
+- [ ] (사용자) 저장소 푸시 → 관리자에게 드라이브 `h200_dvft` 전달 → `/app/data` 아래
 - [ ] `bash run.sh env` → `bash run.sh smoke` (속도·메모리 확인 후 본 실험 시간 추정)
 - [ ] `bash run.sh nyu`, `bash run.sh kitti` → 결과 표 (README·docs)
 
@@ -107,5 +108,7 @@
 - 2026-10-08 12:25 DepthVLM-4B zero-shot KITTI 652 장 (로컬) → F-8.
 - 2026-10-08 12:23 `prep/pack.py`: meta 17 파일 / nyu_test 1,308 / nyu_train 48,462 (zip 3) / kitti_eval 3,776 / kitti_train 43,844 (zip 11) = zip 17 개, 25.55 GiB.
 - 2026-10-08 12:28 `h200/unpack.py` 로 17 개 전부 풀기 (24 초, SHA256 통과) → `diff -rq` 로 원본과 97,407 파일 바이트 일치. 드라이브 폴더 zip 처럼 감싼 경우(zip 안의 zip)도 풀림 확인.
+- 2026-10-08 12:43–13:23 `rclone copy ~/data/h200_staging/dvft gdrive:h200_dvft` (전송 4 개, 청크 128M) — 종료 0. 속도가 3–60 MiB/s 로 출렁였고
+  rclone 이 일부를 다시 보내 전송 합계가 38.5 GiB (파일 합 25.55 GiB) — 오류 줄은 없음. 13:25 `rclone hashsum sha256` 20/20 = 로컬, `rclone check` 0 differences / 20 matching.
 - 2026-10-08 12:31 로컬 점검: KITTI 검증 5 장 예측·채점, select_epoch (가짜 결과 3 개 → 동점이면 나중 에폭), KITTI 학습 데이터 읽기 (깊이 헤드만 2 걸음:
   깊이 범위 0.001–80 m, 입력 1685×488 = 이미지 토큰 780, 정답 유효 7–20 %, 손실 0.147).
