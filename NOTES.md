@@ -113,6 +113,19 @@
   STALL_MIN(기본 40)분 동안 그대로면 프로세스 묶음을 끄고 다음 단계(채점·zip)로 넘어간다. 예측·채점은 한 번에 STEP_MIN(기본 90)분 제한 (timeout).
   로컬 가짜 명령 시험: 멈춤 → 종료 124·자식까지 정리, 정상 → 0, 실패 → 원래 종료 코드 3.
 
+- **F-11 (10-09) kitti 작업 14 시간 — 우리 코드 흐름으로는 설명되지 않는다** (서버 로그를 받기 전 점검)
+  · 예상: `kitti LBS=4` 작업 전체 5–5.5 h (스모크 속도 0.235 s/장 × 65,766 장 ≈ 4.3 h + LBS 4 로 5–10 % + 준비·채점 약 1 h).
+  · 누적 손실 정규화 정상: DepthVLM 의 Qwen3VLForConditionalGeneration 에 `accepts_loss_kwargs = False` → transformers 5.2 Trainer 가 손실을 누적 걸음 수로 나눈다
+    (TRL 0.19.1 은 이 값을 바꾸지 않음). 누적 8·16 이어도 기울기는 64 장 평균, 기록되는 손실도 정상.
+  · 로컬 전체 흐름 시험 (`STAGE=1 bash run.sh kitti N=16 EPOCHS=2 LBS=2 GBS=4`, 미리 만든 환경·데이터·가중치 링크): 603 초에 원래 모델 테스트·검증 → 학습 →
+    체크포인트 2 개 검증 → 에폭 고르기 → 테스트 → zip(597 MB) 까지 끝나고 바로 종료. 원래 모델 테스트 = F-8 과 같은 값, 체크포인트는 끝에 지워짐.
+    (첫 시도는 로컬 data/splits 링크가 없어 테스트 예측만 실패 — 서버는 meta zip 이 data/splits 에 풀어 스모크에서도 썼다)
+  · 옛 run.sh(지금 서버에서 도는 판)의 끝: 진행 줄 루프를 끈 뒤에도 그 sleep 이 출력 파이프를 잡아 종료가 최대 PROGRESS_SEC(10 분) 늦다 (시험: 5 초 작업이 60 초 뒤 종료).
+    14 h 의 원인은 아님. 새 run.sh 는 진행 확인을 학습 감시 안에서 해 해당 없음.
+  · 남는 후보: 늦게 시작(대기) / 준비 단계(pip 설치·HF 받기 — 출력이 없어 멈춰도 조용) / 학습 중 멈춤([진행] 줄의 loss·epoch 가 그대로) / 끝났는데 상태 미반영.
+    콘솔 로그의 [setup] 시각(UTC)과 마지막 줄로 가린다. 옛 run.sh 는 어디서 멈춰도 스스로 끝나지 않는다 (F-10).
+  · 조치: 준비 단계에도 시간 제한 (패키지 설치 60 분, flash-attn 30 분, 가중치 받기 60 분, zip 풀기 90 분) — 로컬 `run.sh env` 로 확인.
+
 ## 실행 로그
 
 - 2026-10-08 10:55 분할 목록 4 개 받기·SHA256 고정. KITTI 받기 시작 (기존 38 개 중 Eigen 에 쓰는 30 개는 크기 대조로 확인, 새로 31 개).
@@ -138,6 +151,7 @@
   torch 2.7.1+cu128 · transformers 5.2.0 · trl 0.19.1, H200 NVL 140 GiB, flash_attention_2. DepthVLM-4B HF 리비전 2b2d02f 받기 2 분, 불러오기 정상.
   WORK = /app/scratch/dvft_work (여유 455 GB) — /app/data 는 쓰기 불가라 작업 사이에 남지 않는 곳 → 작업마다 환경·zip 풀기를 다시 한다 (작업당 10–15 분 더).
   가중치 크기 표시 '12K' 는 HF 캐시의 심볼릭 링크만 센 것 → run.sh 의 du 를 -L 로 고침 (표시만, 동작 무관).
+- 2026-10-09 14:00 README 표에 DepthVLM-4B zero-shot 행 추가 (로컬 sdpa 측정 F-6·F-8, ‡ 각주: H200 값이 나오면 바꾼다). 파인튜닝 행은 아직 비움 (서버 결과 zip 없음).
 - 2026-10-08 14:00 README 를 한국어로 교체 (사용자 지시: vlm-depth-rmse README 와 같은 형식). 결과 표 = UniDepthV2 표 V·VI 수치·굵게/밑줄 그대로 + 모델명 옆 학회·연도
   (arXiv 원문 comments·journal-ref 로 확인: BTS arXiv 2019, AdaBins CVPR 2021, NeWCRFs CVPR 2022, iDisc CVPR 2023, ZoeDepth arXiv 2023, Metric3Dv2 TPAMI 2024,
   Depth Anything V2 NeurIPS 2024, UniDepthV2 arXiv 2025, DepthVLM arXiv 2026), DepthVLM-4B 칸은 비움. humanize-korean 윤문(light, 변경률 0.2 %, 게이트 통과, 표·헤딩 바이트 동일).

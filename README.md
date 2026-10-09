@@ -39,7 +39,10 @@ vlm-depth-rmse에서는 DepthVLM-4B를 zero-shot으로만 비교했다. 원래 R
 | Metric3Dv2 (TPAMI 2024) | 사전학습 후 NYU 파인튜닝 | **98.9** | **99.8** | **100** | <u>4.70</u> | <u>0.183</u> | **0.020** |
 | Depth Anything V2 (NeurIPS 2024) | 사전학습 후 NYU 파인튜닝 | 98.4 | **99.8** | **100** | 5.60 | 0.206 | <u>0.024</u> |
 | UniDepthV2-Large (arXiv 2025) | 사전학습 후 NYU 파인튜닝 | <u>98.8</u> | **99.8** | **100** | **4.68** | **0.180** | **0.020** |
+| DepthVLM-4B (arXiv 2026)‡ | 사전학습만 (zero-shot) | 93.4 | 99.0 | 99.8 | 8.93 | 0.353 | 0.039 |
 | DepthVLM-4B (arXiv 2026) | 사전학습 후 NYU 파인튜닝 |  |  |  |  |  |  |
+
+‡ 파인튜닝 전 DepthVLM-4B는 로컬 GPU(RTX PRO 4500, sdpa)에서 같은 채점 코드로 잰 값이다. H200(flash_attention_2) 값이 나오면 바꾼다.
 
 BTS 학습 목록에는 테스트 장면 `bookstore_0001`과 같은 서점의 다른 녹화 구간(1,383장)이 들어 있다. 표의 다른 모델도 같은 목록을 썼다고 보고 그대로 두었다.
 
@@ -69,7 +72,10 @@ BTS 학습 목록에는 테스트 장면 `bookstore_0001`과 같은 서점의 �
 | Metric3Dv2 (TPAMI 2024)† | 사전학습 후 KITTI 파인튜닝 | <u>98.5</u> | **99.8** | **100** | <u>4.40</u> | 1.99 | <u>0.064</u> |
 | Depth Anything V2 (NeurIPS 2024) | 사전학습 후 KITTI 파인튜닝 | 98.3 | **99.8** | **100** | 4.50 | <u>1.86</u> | 0.067 |
 | UniDepthV2-Large (arXiv 2025) | 사전학습 후 KITTI 파인튜닝 | **98.9** | **99.8** | <u>99.9</u> | **3.73** | **1.71** | **0.061** |
+| DepthVLM-4B (arXiv 2026)‡ | 사전학습만 (zero-shot) | 91.5 | 98.5 | 99.7 | 8.88 | 3.46 | 0.130 |
 | DepthVLM-4B (arXiv 2026) | 사전학습 후 KITTI 파인튜닝 |  |  |  |  |  |  |
+
+‡ NYU 표와 같다 (로컬 측정, H200 값이 나오면 바꾼다).
 
 † Metric3Dv2 행은 Metric3D 공식 평가 코드 기준일 가능성이 크다. 그 코드는 Garg crop 대신 Eigen crop을 쓰고 예측을 자르지 않으며 논문 표의 RMSlog 칸에는 실제로 SILog가 들어간다. 우리 채점 코드를 그 규칙에 맞추면 Metric3Dv2의 KITTI zero-shot 논문 수치 6개가 모두 재현된다 (NOTES F-4).
 
