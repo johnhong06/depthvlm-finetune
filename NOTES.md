@@ -33,8 +33,8 @@
 - [ ] (사용자) 저장소 푸시 → 관리자에게 드라이브 `h200_dvft` 전달 → `/app/data` 아래
 - [x] `bash run.sh env` 통과 (이슈 johnhong06_888, commit b925eee, 6 분) — 실행 로그 10-08 14:16
 - [x] `bash run.sh smoke` 통과 (이슈 johnhong06_889, commit 8c1cbb8, 13 분) — 실행 로그 10-08 14:24. 본 실험 추정 nyu ≈ 5.5 h · kitti ≈ 4.8 h · all ≈ 10 h. NYU 스모크 학습 뒤 하락 → F-9
-- [ ] (사용자 결정) 바로 `all` vs 먼저 운영 설정 점검 `bash run.sh nyu EPOCHS=1 N=4000` (약 1 h, 검증 400 장으로만 판단 — 규칙 3) — F-9
-- [ ] (진행 중, 10-08 사용자 제출) `bash run.sh nyu` — 장치 배치 기본 8 (NYU 는 입력 크기 하나라 스모크와 같은 메모리 139.7 GB 예상, 멈추면 LBS=4 로 다시)
+- [x] (사용자 결정 → 점검 없이 바로 `nyu` 제출) 바로 `all` vs 먼저 운영 설정 점검 `bash run.sh nyu EPOCHS=1 N=4000` (약 1 h, 검증 400 장으로만 판단 — 규칙 3) — F-9
+- [x] `bash run.sh nyu` (이슈 johnhong06_890, commit 8c1cbb8, 장치 배치 8, 3 h 53 m) — F-12. 결과 zip `dvft_nyu_1008_0613.zip` (322M) 은 아직 못 받음 (콘솔 로그로 기록)
 - [ ] `bash run.sh kitti LBS=4` (D-7: 입력 크기 4 종, 스모크 99.5 %) → 결과 표 (README·docs)
 
 ## 결정 기록
@@ -126,6 +126,17 @@
     콘솔 로그의 [setup] 시각(UTC)과 마지막 줄로 가린다. 옛 run.sh 는 어디서 멈춰도 스스로 끝나지 않는다 (F-10).
   · 조치: 준비 단계에도 시간 제한 (패키지 설치 60 분, flash-attn 30 분, 가중치 받기 60 분, zip 풀기 90 분) — 로컬 `run.sh env` 로 확인.
 
+- **F-12 (10-09) NYU 파인튜닝 결과 (H200, 이슈 890, 표준 규칙 이미지별 평균)**
+  · 테스트 654 장: 파인튜닝 전 δ1 93.4 / δ2 99.0 / δ3 99.8 / A.Rel 8.92 / RMS 0.353 / Log10 0.039 / SILog 10.28 (pooled RMS 0.410)
+    → 파인튜닝 후(3 에폭 체크포인트) 94.3 / 99.3 / 99.9 / 8.39 / 0.302 / 0.036 / SILog 9.17 (pooled RMS 0.333). 로컬 sdpa zero-shot(F-6)과 A.Rel 만 0.01 다름.
+  · 검증 400 장 (에폭 고르기, D-3): 파인튜닝 전 91.8 / A.Rel 9.48 / RMS 0.383 → 1 에폭 86.3 / 11.73 / 0.469 (나빠짐) → 2 에폭 93.7 / 9.01 / 0.338 → 3 에폭 93.9 / 8.86 / 0.338 (고름).
+    1 에폭(학습률이 가장 높은 구간)에서 나빠졌다가 학습률이 줄며 회복·개선 — 스모크의 하락(F-9)도 이 초반 구간이었던 것으로 보인다.
+  · 표 V 에서: 학습만 한 4 개(BTS·AdaBins·NeWCRFs·iDisc)는 모든 지표에서 앞서고, 사전학습 후 파인튜닝한 4 개 중 ZoeDepth(95.2 / 7.70 / 0.278) 보다는 δ3 만 앞선다.
+    Metric3Dv2·DAv2·UniDepthV2(δ1 98.4–98.9, A.Rel 4.68–5.60, RMS 0.180–0.206) 와는 차이가 크다. δ3 99.9 는 새 2 위 (README 표 밑줄 다시 매김).
+  · 학습: 3 에폭 1,077 걸음, train_runtime 3:22:36 (5.657 장/s — 스모크 3.85 장/s 보다 빠름: 누적 8 이라 최적화 걸음이 1/8), 손실 0.123 → 0.049, grad_norm 0.03–0.8.
+    GPU 메모리 89–141 GB (08:46 에 141,165 MiB — 장치 배치 8 이 한계 근처였음, D-7), 07:56 의 GPU 5 % 는 1 에폭 체크포인트 저장 중.
+  · 작업 시간: 준비 23 분(환경·가중치 2 분·zip 풀기) + zero-shot 테스트·검증 약 4 분 + 학습 3 h 23 m + 검증 3 개·테스트 약 8 분 = 3 h 53 m.
+
 ## 실행 로그
 
 - 2026-10-08 10:55 분할 목록 4 개 받기·SHA256 고정. KITTI 받기 시작 (기존 38 개 중 Eigen 에 쓰는 30 개는 크기 대조로 확인, 새로 31 개).
@@ -151,6 +162,8 @@
   torch 2.7.1+cu128 · transformers 5.2.0 · trl 0.19.1, H200 NVL 140 GiB, flash_attention_2. DepthVLM-4B HF 리비전 2b2d02f 받기 2 분, 불러오기 정상.
   WORK = /app/scratch/dvft_work (여유 455 GB) — /app/data 는 쓰기 불가라 작업 사이에 남지 않는 곳 → 작업마다 환경·zip 풀기를 다시 한다 (작업당 10–15 분 더).
   가중치 크기 표시 '12K' 는 HF 캐시의 심볼릭 링크만 센 것 → run.sh 의 du 를 -L 로 고침 (표시만, 동작 무관).
+- 2026-10-08 06:13–10:06 UTC (15:13–19:06 KST) H200 `bash run.sh nyu` (이슈 johnhong06_890, commit 8c1cbb8, 장치 배치 8) — 정상 종료 → F-12. 사용자가 콘솔 로그를 붙여 줌 (10-09).
+  README NYU 표: DepthVLM zero-shot 행을 H200 값(A.Rel 8.92)으로, 파인튜닝 행 채움, δ3 2 위(밑줄)를 DepthVLM 99.9 로 다시 매김 (zero-shot 행은 순위에서 뺌).
 - 2026-10-09 14:00 README 표에 DepthVLM-4B zero-shot 행 추가 (로컬 sdpa 측정 F-6·F-8, ‡ 각주: H200 값이 나오면 바꾼다). 파인튜닝 행은 아직 비움 (서버 결과 zip 없음).
 - 2026-10-08 14:00 README 를 한국어로 교체 (사용자 지시: vlm-depth-rmse README 와 같은 형식). 결과 표 = UniDepthV2 표 V·VI 수치·굵게/밑줄 그대로 + 모델명 옆 학회·연도
   (arXiv 원문 comments·journal-ref 로 확인: BTS arXiv 2019, AdaBins CVPR 2021, NeWCRFs CVPR 2022, iDisc CVPR 2023, ZoeDepth arXiv 2023, Metric3Dv2 TPAMI 2024,
