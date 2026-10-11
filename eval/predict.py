@@ -75,8 +75,9 @@ def depthvlm(weights, processor):
     return f
 
 
-def metric3d(ext):
-    m = torch.hub.load(os.path.join(ext, "Metric3D"), "metric3d_vit_large", pretrain=True, source="local").cuda().eval()
+def metric3d(ext, model=None):
+    """model 을 주면 (train/m3d_ft.py 의 학습 중 모델, eval 상태로 넘김) 그 모델로, 없으면 공개 zero-shot 가중치를 불러 같은 전처리로 예측한다."""
+    m = model if model is not None else torch.hub.load(os.path.join(ext, "Metric3D"), "metric3d_vit_large", pretrain=True, source="local").cuda().eval()
     mean = torch.tensor([123.675, 116.28, 103.53]).float()[:, None, None]
     std = torch.tensor([58.395, 57.12, 57.375]).float()[:, None, None]
 

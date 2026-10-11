@@ -66,3 +66,20 @@ DepthVLM-4B 를 NYU Depth V2 와 KITTI Eigen 분할에 각각 파인튜닝하고
 표 V·VI 의 열 그대로: NYU = δ1·δ2·δ3 (%), A.Rel (×100), RMS, Log10 / KITTI = δ1·δ2·δ3 (%), A.Rel (×100), RMS, RMSlog.
 DepthVLM 은 두 줄: 파인튜닝 전 (zero-shot) / 파인튜닝 후. 각주: 모델 크기 (4B, 표의 다른 모델은 0.5B 이하), 학습 설정 (3 절), NYU 학습 목록의 bookstore 겹침,
 표 VI 의 Metric3Dv2 행은 Metric3D 코드 기준(Eigen crop, 예측 안 자름, RMSlog 칸 = SILog)일 가능성이 큼 (NOTES F-4).
+
+## 5. Metric3Dv2 NYU 파인튜닝 (SILog 측정용, NOTES D-8)
+
+공개 가중치가 zero-shot 뿐이라 공식 설정에 맞춰 직접 파인튜닝한다 (`train/m3d_ft.py`, H200 `bash run_m3d.sh nyu`).
+
+| 항목 | 값 | 공식 대비 |
+|---|---|---|
+| 시작 가중치 | `metric_depth_vit_large_800k.pth` (Hugging Face JUGGHM/Metric3D) | 같음 |
+| 최적화 | AdamW, 인코더 5e-7 · 디코더 1e-5, betas 0.9/0.999, wd 0, eps 1e-10, 워밍업 20 걸음 + poly 0.9 (최소 1e-8), 기울기 자르기 5 | 같음 |
+| 걸음·배치 | 6,000 걸음 × 16 장 | 논문 부록 (공식 config 는 20,010 걸음 × GPU 당 2, GPU 수 미기재) |
+| 입력 | 테두리 6 px 검게, RandomResize 0.85–1.15 (p 0.5), 616×1064 무작위 자르기 (모자라면 채움), 좌우 뒤집기 0.4, 회색 0.1, 밝기/대비 0.1 | 날씨·흐림·압축·가장자리 가리기 뺌 |
+| 정답 | sync 깊이 (m), Eigen crop [45:471, 41:601] 안만, × 1000/fx (canonical, 초점 → 1000) | 같음 |
+| 손실 | GRUSequence 1.0 (γ 0.9) + HDNRandom 0.5 + HDSNRandom 0.5 + VNL 1.0 — 공식 손실 파일 | 법선 손실 3 개 뺌 (NYU 법선 정답 없음) |
+| 정밀도·어텐션 | bf16 autocast, SDPA | xFormers 대신 같은 계산의 SDPA |
+| 걸음 고르기 | 검증 400 장, 500 걸음마다 AbsRel (Metric3D 규칙) | — |
+| 평가 | 테스트 654 장, Metric3D 규칙 (README 와 비교) + BTS 규칙, 사진별 평균, SILog·전역 스케일 오차 포함 | — |
+

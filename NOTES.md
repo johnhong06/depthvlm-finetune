@@ -37,6 +37,8 @@
 - [x] `bash run.sh nyu` (이슈 johnhong06_890, commit 8c1cbb8, 장치 배치 8, 3 h 53 m) — F-12. 결과 zip `dvft_nyu_1008_0613.zip` (322M) 은 아직 못 받음 (콘솔 로그로 기록)
 - [x] `bash run.sh kitti LBS=4` (이슈 johnhong06_893, commit 1f4aa94, 3 h 19 m) — F-15. README 표 채움. 결과 zip `dvft_kitti_1009_0715.zip` (488M) 은 아직 못 받음
 - [ ] (선택) KITTI 결과 zip 받으면 `eval/breakdown.py --ds kitti` 로 파인튜닝 전후 비교
+- [x] Metric3Dv2 NYU 파인튜닝 코드 (`train/m3d_ft.py`·`run_m3d.sh`, D-8) + 로컬 스모크 통과 (실행 로그 10-11 23:30)
+- [ ] (사용자) 푸시 → `bash run_m3d.sh smoke` (약 15 분) → `bash run_m3d.sh nyu` (추정 2–4 h) → 결과 zip 받기 → D-8 판정
 
 ## 결정 기록
 
@@ -71,6 +73,22 @@
   KITTI 스모크 400 장에 가장 큰 입력(1720×498)이 150 장 들어 있어 최대 크기는 지나갔지만 여유가 1 GB 미만이다.
 - 전체 배치가 같아 기울기(사진별 SILog 평균, 답 문장 길이 같음)는 같다. 시간은 5–10 % 늘 것으로 추정. 다른 선택지: LBS 8 그대로 두고 메모리 부족이 나면 LBS=4 (F-9 실행 로그의 의견),
   NYU 만 LBS 8 (입력 크기가 하나라 안정적일 수 있음). 4–5 시간 뒤에 멈추면 그만큼 잃으므로 처음부터 4 를 제안 — 두 실험 조건도 같아진다.
+
+### D-8 (2026-10-11) Metric3Dv2 NYU 파인튜닝 — 파인튜닝한 pure vision 모델의 SILog 를 얻기 위한 재현 (사용자: "매트릭3d 의 파인튜닝된 SILog 지표만", "H200 에서 돌리기")
+- 왜: depthvlm-silog 제안 덱 슬라이드 9 에 DepthVLM 과 Metric3Dv2 의 zero-shot → 파인튜닝 변화를 함께 보이려 하나, Metric3Dv2 의 NYU 파인튜닝 가중치는 공개되지 않았고
+  (저자 답, Metric3D 이슈 #144: "All the released models are zero-shot models without fine-tuning"), README 의 파인튜닝 수치는 δ1·AbsRel·RMSE·log10 뿐 (SILog 없음).
+- 무엇: 공개 zero-shot ViT-L (`metric_depth_vit_large_800k.pth`) 을 공식 파인튜닝 설정에 맞춰 NYU 에 직접 파인튜닝 (`train/m3d_ft.py`, `run_m3d.sh`).
+  공식 학습 프레임워크 (mmcv 1.x 기반, 27 개 파일) 는 서버 환경에서 막힐 위험이 커서 쓰지 않고, 로컬 추론에서 검증된 모델 경로 (torch.hub, 학습 모드 출력 그대로) 에 공식 손실 파일만 불러 쓴다.
+- 공식과 같게 (training/mono/configs/RAFTDecoder/vit.raft5.giant2.nyu.py · large.kitti.py, datasets/nyu_dataset.py): AdamW 인코더 5e-7 · 디코더 1e-5, 워밍업 20 걸음 + poly 0.9,
+  기울기 자르기 5, 사진 테두리 6 px 검게, 정답은 Eigen crop 안만, canonical 라벨 (× 1000/fx), RandomResize 0.85–1.15 → 616×1064 무작위 자르기, 좌우 뒤집기 0.4,
+  깊이 손실 GRUSequence (1.0) + HDNRandom (0.5) + HDSNRandom (0.5) + VNL (1.0).
+- 바꾼 것: NYU 법선 정답 (GeoNet) 이 없어 법선 손실 3 개 (NormalBranch·DeNoConsistency·PWNPlanes) 제외, 색 변형은 회색·밝기/대비만, 배치 16 · 6,000 걸음 (논문 부록:
+  "batch-size of 16", "6K steps", "converge quickly in approximately 2K steps" — 공식 config 의 20,010 걸음 × GPU 당 2 는 GPU 수가 적혀 있지 않음), bf16, 어텐션 SDPA (같은 계산).
+- 데이터: DepthVLM 파인튜닝과 같은 학습 22,923 장 (`nyu/lists/train_ft.txt`) · 검증 400 장 (`val.txt`, 500 걸음마다 AbsRel 로 걸음 고르기) · 테스트 654 장 한 번 (D-3 과 같은 원칙).
+- 판정 (결과 전 고정): 테스트 (Metric3D 평가 규칙, 사진별 평균) 가 README 의 NYU 파인튜닝 ViT-L (δ1 98.9 · AbsRel 0.047 · RMSE 0.183) 에서 δ1 −0.5 %p ·
+  AbsRel·RMSE +10 % 이내 (δ1 ≥ 98.4, AbsRel ≤ 0.052, RMSE ≤ 0.203) 를 모두 만족하면 '재현 성공' → 그 SILog 를 '파인튜닝한 Metric3Dv2' 값으로 쓴다.
+  하나라도 못 미치면 '재현 미달' — SILog 는 참고값으로만 적고 덱에는 README 수치 (SILog 없음) 를 유지한다.
+- 확인: 0 걸음 (zero-shot) 테스트가 기존 측정 (Metric3D 규칙 97.5 / 6.28 / 0.251, SILog 6.71) 과 같아야 한다 — 전처리·SDPA 가 바뀌지 않았는지.
 
 ## 발견
 
@@ -221,4 +239,15 @@
   · 예측 0.85–1.08 초/장. 채점(20 장, 이미지별 평균) → F-9. 원래 모델 NYU 검증 20 장 90.2 / 9.08 = 로컬 F-7.
   · 본 실험 시간 추정(스모크 속도로 위쪽 어림 — 누적 8 이면 최적화 걸음이 1/8 이라 더 빠를 수 있음): NYU 학습 22,923 × 3 / 3.85 ≈ 5.0 h, KITTI 21,922 × 3 / 4.26 ≈ 4.3 h,
     검증 400 장 × 3 에폭 ≈ 17 분·테스트 ≈ 10 분·원래 모델 ≈ 16 분 (데이터셋마다) → nyu ≈ 5.5 h, kitti ≈ 4.8 h, all ≈ 10 h.
+- 2026-10-11 23:00–23:32 Metric3Dv2 NYU 파인튜닝 코드 (D-8): `train/m3d_ft.py` (공식 손실 파일을 그대로 불러 씀, 모델은 torch.hub 학습 모드 출력), `run_m3d.sh` (H200 진입점,
+  envs/metric3d.txt 환경 · prep/fetch_ext.sh · HF 공개 가중치 · h200/unpack.py — 업로드 없음), `eval/predict.py` 의 metric3d() 가 학습 중 모델을 받도록 (기본 동작 그대로).
+  · 점검: 데이터 22,923 / 400 / 654 장 (학습·검증 겹침 0), canonical 라벨 = 깊이 × 1000/(fx·r) 로 공식 LabelScaleCononical + RandomResize ('camera model is hold,
+    depth label is scaled by 1/r') 와 같음, 손실 4 개 인터페이스·기울기 유한. 고친 것 (결과 전): 무효 정답을 0 → −1 (공식 ignore_label) — 0 이면 GRUSequence 의 신뢰도 손실이
+    0 나누기로 NaN 이 되어 매번 빠짐.
+  · 로컬 스모크 (`bash run_m3d.sh smoke PY=~/venv/metric3d/bin/python D=… SP=… MB=1`, 학습 64 장 · 20 걸음 × 4 장): 종료 0, 1.5 분, 결과 zip 9.4 MB
+    (m3d_ft.json·로그·테스트 예측 f16). 걸음당 1.5–1.8 s (장당 0.4 s, 로컬 GPU), GPU 최대 14.3 GB (한 번에 1 장). 0 걸음 예측 vs 기존 zero-shot 예측 (같은 20 장):
+    화소 최대 상대 차 1.5 % (SDPA 반올림), 지표는 소수 넷째 자리까지 같음 (δ1 94.81 · AbsRel 0.0797 · RMSE 0.2886 · SILog 9.56). 20 걸음이라 검증 AbsRel 은
+    나아지지 않아 0 걸음이 고름 (스모크라 판정 무관). 같은 시드로 두 번 돌린 값이 같음.
+  · 첫 스모크는 실행 중에 run_m3d.sh 를 고쳐 (테스트 장 수 표시 wc → grep) bash 가 바뀐 파일을 읽다 문법 오류로 끝남 — 학습 프로세스는 따로 끝까지 돌았고, 고치지 않고 다시 돌려 통과.
+    실행 중인 스크립트는 고치지 않는다.
 
