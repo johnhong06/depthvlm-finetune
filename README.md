@@ -88,7 +88,7 @@ DepthVLM-4B 두 행은 H200(flash_attention_2)에서 같은 채점 코드로 잰
 - [x] NYU 파인튜닝·평가
 - [x] KITTI 파인튜닝·평가
 - [x] 결과 표 작성
-- [ ] Metric3Dv2 NYU 파인튜닝 재현 (SILog 측정용, `bash run_m3d.sh nyu`, [docs/PROTOCOL.md](docs/PROTOCOL.md) 5 절)
+- [x] Metric3Dv2 NYU 파인튜닝 재현 (SILog 측정용, `bash run_m3d.sh nyu`, [docs/PROTOCOL.md](docs/PROTOCOL.md) 5 절) — 테스트 δ1 98.93 · AbsRel 0.0447 · RMSE 0.175 (README 98.9 · 0.047 · 0.183), SILog 6.70 → 4.74
 
 세부 설정과 바꾼 부분의 근거, 검증 기준은 [docs/PROTOCOL.md](docs/PROTOCOL.md)에 정리했다.
 
